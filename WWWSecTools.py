@@ -3,15 +3,19 @@ import requests
 import socket
 import sys
 import time
+import os
 from concurrent.futures import ThreadPoolExecutor
 from typing import Tuple, Any, List, Union
 
+from nassl._nassl import OpenSSLError
 from nassl.ssl_client import OpenSslVersionEnum
 from sslyze.utils.ssl_connection import SSLHandshakeRejected
 
 HTTP = "http://"
 HTTPS = "https://"
-
+LOG = sys.stdout
+DEVNULL = open(os.devnull, 'w')
+# LOG = DEVNULL
 
 class CSVWriter:
     def __init__(self, writer, header: List):
@@ -19,13 +23,17 @@ class CSVWriter:
         self.write_row(header)
 
     def write_row(self, row: List = None) -> None:
-        self.writer.writerow(row)
+        if self.writer is not None:
+            self.writer.writerow(row)
+        else:
+            print(row, file=LOG)
 
 
 class Domain:
     csv_format = ['URL', 'HTTP', 'HTTPS', 'HSTS', 'HTTPS Redirect', 'SSLV23',
                   'SSLV2', 'SSLV3', 'TLSV1', 'TLSV1_1', 'TLSV1_2', 'TLSV1_3']
 
+    HEADERS = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.84 Safari/537.36'}
     def __init__(self, url: str, csv_writer: CSVWriter):
         self.url: str = Domain.remove_schema(url)
         self.has_http: bool = False
@@ -43,26 +51,34 @@ class Domain:
 
     def run(self):
         # is port 80 open?
+        print("\tTesting %s ---> Port 80" % (self.url,), file=LOG)
         port80 = self.has_open_port(port=80)
         if port80:
             # check for redirect
+            print("\tTesting %s ---> can connect http" % (self.url,), file=LOG)
             can_connect = self.can_connect(schema=HTTP)
             if can_connect[0]:
+
                 self.has_http = True
                 self.http_response = can_connect[1]
+                print("\tTesting %s ---> redirect" % (self.url,), file=LOG)
                 self.https_redirect = self.is_https_redirect(
                     response=self.http_response)
-
+        print("\tTesting %s ---> Port 443" % (self.url,), file=LOG)
         port443 = self.has_open_port(port=443)
         if port443:
+            print("\tTesting %s ---> can connect https" % (self.url,), file=LOG)
             can_connect = self.can_connect(schema=HTTPS)
             if can_connect[0]:
                 self.has_https = True
+                print("\tTesting %s ---> has hsts" % (self.url,), file=LOG)
                 self.hsts = self.has_hsts()
+                print("\tTesting %s ---> crypto" % (self.url,), file=LOG)
                 self.crypt_stuff()
             # check ssl versions
             # check tls version
             # check other tls stuff
+        print("Finished: %s" % (self.url))
         self.write_to_csv()
 
     def crypt_stuff(self):
@@ -74,7 +90,7 @@ class Domain:
             try:
                 con2.connect()
                 self.ssl_version_support[ssl_tls_versions] = True
-            except SSLHandshakeRejected:
+            except (SSLHandshakeRejected, OpenSSLError):
                 self.ssl_version_support[ssl_tls_versions] = False
 
     def has_hsts(self) -> bool:
@@ -82,7 +98,7 @@ class Domain:
         Connect to target site and check its headers."
         """
         try:
-            self.https_response = requests.get(HTTPS + self.url)
+            self.https_response = requests.get(HTTPS + self.url, headers=Domain.HEADERS)
         except requests.exceptions.SSLError as error:
             print("An error for %s when checking HSTS. \nError: %s" % (
                 self.url, error,),
@@ -127,12 +143,12 @@ class Domain:
         code301 = response.status_code == 301
         return code301 == locationHTTPS
 
-    def can_connect(self, schema: str = HTTP) -> Tuple[bool, Any]:
+    def can_connect(self, schema: str = HTTP, timeout:int = 10) -> Tuple[bool, Any]:
         """
         :return: Tuple. Index 0 is the http and Index 1 is https
         """
         try:
-            httpResponse = requests.get(schema + self.url)
+            httpResponse = requests.get(schema + self.url, timeout=timeout, headers=Domain.HEADERS)
         except requests.exceptions.ConnectionError:
             return False, None
 
@@ -198,10 +214,10 @@ def run():
 
 
 def test():
-    site = "jabbari.io"
+    site = "accuweather.com"
     # noinspection PyTypeChecker
-    d = Domain(url=site, csv_writer=None)
-    print(d.can_connect(schema=HTTPS))
+    d = Domain(url=site, csv_writer=CSVWriter(writer=None, header=None))
+    d.run()
 
 
 if __name__ == '__main__':
