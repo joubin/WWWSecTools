@@ -14,7 +14,7 @@ from sslyze.utils.ssl_connection import SSLHandshakeRejected
 HTTP = "http://"
 HTTPS = "https://"
 LOG = sys.stdout
-DEVNULL = open(os.devnull, 'w')
+# DEVNULL = open(os.devnull, 'w')
 # LOG = DEVNULL
 
 class CSVWriter:
@@ -80,6 +80,15 @@ class Domain:
             # check other tls stuff
         print("Finished: %s" % (self.url))
         self.write_to_csv()
+
+    def is_domain_parked(self) -> bool:
+        raise NotImplementedError
+        # pull the page and check for *park*.css and *park*.js
+        # pull / and /+random data, if pages match, its probably parked
+        # each visit to / resutls in a different url being tacked on
+        # redirects to a site one of these sites
+        ["https://uniregistry.com"]
+
 
     def crypt_stuff(self):
         import sslyze.server_connectivity as sc
@@ -214,12 +223,14 @@ def run():
 
 
 def test():
-    site = "accuweather.com"
-    # noinspection PyTypeChecker
-    d = Domain(url=site, csv_writer=CSVWriter(writer=None, header=None))
-    d.run()
-
+    # site = "jabbari.io"
+    # # noinspection PyTypeChecker
+    # d = Domain(url=site, csv_writer=CSVWriter(writer=None, header=None))
+    # print(Domain.csv_format)
+    # d.run()
+    from ParkDetection import ParkedDomain as PD
+    p = PD()
 
 if __name__ == '__main__':
-    run()
-    # test()
+    # run()
+    test()
