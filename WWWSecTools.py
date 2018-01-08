@@ -17,11 +17,11 @@ from sslyze.utils.ssl_connection import SSLHandshakeRejected
 from multiprocessing import Process, Pool, Queue
 HTTP = "http://"
 HTTPS = "https://"
-# LOG = sys.stdout
-#
-#
-DEVNULL = open(os.devnull, 'w')
-LOG = DEVNULL
+LOG = sys.stdout
+
+
+# DEVNULL = open(os.devnull, 'w')
+# LOG = DEVNULL
 
 
 class Alexa:
@@ -125,10 +125,10 @@ class ParkedDomain:
     def __get_page(self):
         try:
             response = requests.get(url=self.schema + self.url,
-                                    headers=Domain.HEADERS)
+                                    headers=Domain.HEADERS, timeout=60)
             content = response.content
             return BeautifulSoup(content, 'html.parser')
-        except (requests.exceptions.ConnectionError):
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
             return None
 
     def has_parking_service_resources(self) -> bool:
@@ -148,7 +148,7 @@ class ParkedDomain:
         url = HTTP + subdomain + '.' + self.url
 
         try:
-            response = requests.get(url=url, headers=Domain.HEADERS, )
+            response = requests.get(url=url, headers=Domain.HEADERS, timeout=60)
         except requests.exceptions.ConnectionError:
             return False
         if 'Location' in response.headers:
@@ -275,7 +275,7 @@ class Domain:
         """
         try:
             self.https_response = requests.get(HTTPS + self.url,
-                                               headers=Domain.HEADERS)
+                                               headers=Domain.HEADERS, timeout=60)
         except (requests.exceptions.ConnectionError, requests.exceptions.SSLError) as error:
             print("An error for %s when checking HSTS. \nError: %s" % (
                 self.url, error,),
@@ -319,7 +319,7 @@ class Domain:
         try:
             locationHTTPS = str(response.headers['Location']).startswith(
                 "https://")
-        except KeyError:
+        except (AttributeError, KeyError):
             locationHTTPS = False
         code301 = response.status_code == 301
         return code301 == locationHTTPS
@@ -368,20 +368,26 @@ class Domain:
 def run(urls: List[str], csv_writer: CSVWriter) -> None:
     jobs : List[Process] = []
     print_queue = Queue()
-    pool = Pool(processes=32)
+    pool = Pool(processes=5)
     for url in urls:
+        print(url)
         domain = Domain(url=url)
         job = pool.Process(target=domain.run, args=(print_queue,), name=url)
         jobs.append(job)
         job.start()
+    something_alive = True
+    while something_alive:
+        for worker in pool._pool:
+            if worker.is_alive():
+                print("alive")
+                break
+            something_alive = False
 
-    pool.join()
 
-
-    print("Started everything")
-    for job in jobs:
-        print("Waiting on %s" % job.name, file=LOG)
-        job.join()
+    # print("Started everything")
+    # for job in jobs:
+    #     print("Waiting on %s" % job.name, file=LOG)
+    #     job.join()
 
     print("Everythong joined, will start writing")
     while not print_queue.empty():
@@ -441,7 +447,8 @@ if __name__ == '__main__':
     # test_random_domains()
     # urls = input_to_list()
     csv_writer = output_to_csvwriter()
-    urls = Alexa().get_top()
+    urls = Alexa().get_top()[:10]
+
     run(urls=urls, csv_writer=csv_writer)
     # q = queue.Queue()
     # d = Domain('apple.com')
