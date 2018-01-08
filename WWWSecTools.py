@@ -15,6 +15,8 @@ from nassl._nassl import OpenSSLError
 from nassl.ssl_client import OpenSslVersionEnum
 from sslyze.utils.ssl_connection import SSLHandshakeRejected
 from multiprocessing import Process, Pool, Queue
+import threading
+
 HTTP = "http://"
 HTTPS = "https://"
 LOG = sys.stdout
@@ -26,19 +28,18 @@ LOG = sys.stdout
 
 class Alexa:
     @staticmethod
-    def get_top(n: int = 20) -> List[str]:
+    def get_top(top_n: int = 1000000) -> List[str]:
         file_name = "top1m.csv"
         ALEXA_DATA_URL = 'http://s3.amazonaws.com/alexa-static/top-1m.csv.zip'
         import requests, zipfile, io
-        r = requests.get(ALEXA_DATA_URL)
+        r = WebDriver.request(url=ALEXA_DATA_URL)
         z = zipfile.ZipFile(io.BytesIO(r.content))
         folder = os.path.join(tempfile.gettempdir(), "csv")
         z.extractall(path=folder)
         file = os.path.join(folder, "top-1m.csv")
         with open(file, 'r') as alexa:
             alexa_csv = csv.reader(alexa, delimiter=',')
-            return [line[1] for line in alexa_csv]
-
+            return [line[1] for line in alexa_csv][:top_n]
 
 
 class CSVWriter:
@@ -53,8 +54,17 @@ class CSVWriter:
             else:
                 print(row, file=LOG)
 
+class WebDriver:
+    WEB_DRIVER = requests.Session()
+    WEB_DRIVER.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_2) '
+                      'AppleWebKit/537.36 (KHTML, like Gecko) '
+                      'Chrome/63.0.3239.84 Safari/537.36'})
+    @staticmethod
+    def request(url : str = None, timeout:int = 60):
+        return WebDriver.WEB_DRIVER.get(url=url, timeout=timeout)
 
-class ParkedDomain:
+class ParkedDomain(WebDriver):
     resolver = dns.resolver.Resolver()  # create a new instance named
 
     PARK_SERVICE = ["1plus.net",
@@ -124,11 +134,11 @@ class ParkedDomain:
 
     def __get_page(self):
         try:
-            response = requests.get(url=self.schema + self.url,
-                                    headers=Domain.HEADERS, timeout=60)
+            response = self.request(url=self.schema + self.url)
             content = response.content
             return BeautifulSoup(content, 'html.parser')
-        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+        except (
+        requests.exceptions.ConnectionError, requests.exceptions.Timeout):
             return None
 
     def has_parking_service_resources(self) -> bool:
@@ -148,7 +158,7 @@ class ParkedDomain:
         url = HTTP + subdomain + '.' + self.url
 
         try:
-            response = requests.get(url=url, headers=Domain.HEADERS, timeout=60)
+            response = self.request(url=url)
         except requests.exceptions.ConnectionError:
             return False
         if 'Location' in response.headers:
@@ -189,15 +199,11 @@ class ParkedDomain:
         return list
 
 
-class Domain:
+class Domain(WebDriver):
     csv_format = ['URL', 'HTTP', 'HTTPS', 'Parked', 'HSTS', 'HTTPS Redirect',
                   'SSLV23',
                   'SSLV2', 'SSLV3', 'TLSV1', 'TLSV1_1', 'TLSV1_2', 'TLSV1_3']
 
-    HEADERS = {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_2) '
-                      'AppleWebKit/537.36 (KHTML, like Gecko) '
-                      'Chrome/63.0.3239.84 Safari/537.36'}
 
     def __init__(self, url: str, csv_writer: CSVWriter = None):
         self.url: str = Domain.remove_schema(url)
@@ -215,7 +221,7 @@ class Domain:
 
         self.csv_writer = csv_writer
 
-    def run(self, a_queue : Queue):
+    def run(self, a_queue: Queue):
         # is port 80 open?
         print("\tTesting %s ---> Port 80" % (self.url,), file=LOG)
         port80 = self.has_open_port(port=80)
@@ -274,9 +280,9 @@ class Domain:
         Connect to target site and check its headers."
         """
         try:
-            self.https_response = requests.get(HTTPS + self.url,
-                                               headers=Domain.HEADERS, timeout=60)
-        except (requests.exceptions.ConnectionError, requests.exceptions.SSLError) as error:
+            self.https_response = self.request(HTTPS + self.url)
+        except (requests.exceptions.ConnectionError,
+                requests.exceptions.SSLError) as error:
             print("An error for %s when checking HSTS. \nError: %s" % (
                 self.url, error,),
                   file=sys.stderr)
@@ -330,8 +336,7 @@ class Domain:
         :return: Tuple. Index 0 is the http and Index 1 is https
         """
         try:
-            httpResponse = requests.get(schema + self.url, timeout=timeout,
-                                        headers=Domain.HEADERS)
+            httpResponse = self.request(schema + self.url)
         except (
                 requests.exceptions.ConnectionError,
                 requests.exceptions.ReadTimeout):
@@ -366,28 +371,19 @@ class Domain:
 
 
 def run(urls: List[str], csv_writer: CSVWriter) -> None:
-    jobs : List[Process] = []
+    jobs: List[threading.Thread] = []
     print_queue = Queue()
-    pool = Pool(processes=5)
     for url in urls:
         print(url)
         domain = Domain(url=url)
-        job = pool.Process(target=domain.run, args=(print_queue,), name=url)
+        job = threading.Thread(target=domain.run, args=(print_queue,), name=url)
         jobs.append(job)
         job.start()
-    something_alive = True
-    while something_alive:
-        for worker in pool._pool:
-            if worker.is_alive():
-                print("alive")
-                break
-            something_alive = False
 
-
-    # print("Started everything")
-    # for job in jobs:
-    #     print("Waiting on %s" % job.name, file=LOG)
-    #     job.join()
+    print("Started everything")
+    for job in jobs:
+        print("Waiting on %s" % job.name, file=LOG)
+        job.join()
 
     print("Everythong joined, will start writing")
     while not print_queue.empty():
@@ -420,8 +416,8 @@ def output_to_csvwriter() -> CSVWriter:
         sys.exit(31)
     out_file = open(outputFile, 'w')
     csv_writer = CSVWriter(
-            writer=csv.writer(out_file, delimiter=','),
-            header=Domain.csv_format)
+        writer=csv.writer(out_file, delimiter=','),
+        header=Domain.csv_format)
     return csv_writer
 
 
@@ -447,10 +443,9 @@ if __name__ == '__main__':
     # test_random_domains()
     # urls = input_to_list()
     csv_writer = output_to_csvwriter()
-    urls = Alexa().get_top()[:10]
+    urls = Alexa().get_top()
 
     run(urls=urls, csv_writer=csv_writer)
     # q = queue.Queue()
     # d = Domain('apple.com')
     # d.run(queue=q)
-
