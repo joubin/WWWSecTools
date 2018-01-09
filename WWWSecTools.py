@@ -9,6 +9,7 @@ from typing import Tuple, Any, Union
 import dns.resolver
 import os
 import requests
+import time
 import tldextract
 from bs4 import BeautifulSoup
 from nassl._nassl import OpenSSLError
@@ -16,6 +17,7 @@ from nassl.ssl_client import OpenSslVersionEnum
 from sslyze.utils.ssl_connection import SSLHandshakeRejected
 from multiprocessing import Process, Pool, Queue
 import threading
+import whois
 
 HTTP = "http://"
 HTTPS = "https://"
@@ -67,64 +69,83 @@ class WebDriver:
 class ParkedDomain(WebDriver):
     resolver = dns.resolver.Resolver()  # create a new instance named
 
-    PARK_SERVICE = ["1plus.net",
-                    "ActiveAudience.com",
-                    "DomainSpa.com",
-                    "DomainSponsor.com",
-                    "Fabulous.com",
-                    "ParkQuick.com",
-                    "SmartName",
-                    "TrafficZ.com",
-                    "activeaudience.com",
-                    "afternic",
-                    "cybersync.com",
-                    "domainHop",
-                    "domainSpa",
-                    "domainSponsor",
-                    "domaindirect.com",
-                    "domainguru.com",
-                    "domainhop.com",
-                    "domaininformer.com",
-                    "domainrightnow.com",
-                    "domainsystems.com",
-                    "dotzup.com",
-                    "fabulous.com",
-                    "futurequest.net",
-                    "goldkey.com",
-                    "hostindex.com",
-                    "hugedomains.com",
-                    "iMonetize.com",
-                    "namedrive.com",
-                    "netvisibility",
-                    "oversee.net",
-                    "parked.com",
-                    "parkednames.com",
-                    "parking4income",
-                    "parkingcrew.com",
-                    "parkingdots",
-                    "parkingdots.com",
-                    "parkingsite",
-                    "parkitnow",
-                    "parkpage.com",
-                    "parkquick",
-                    "premiumtraffic.com",
-                    "revenuedirect",
-                    "searchportalinformation.com",
-                    "sedo",
-                    "sedo.com",
-                    "sedopro.com",
-                    "siteparker.com",
-                    "skenzo",
-                    "smartname.com",
-                    "snapnames.com",
-                    "streamic.com",
-                    "tafficvalet.com",
-                    "trafficclub.com",
-                    "trafficparking.com",
-                    "trafficz",
-                    "uniregistry.com",
-                    "webcom.com",
-                    "whypark.com"
+    PARK_SERVICE = [
+       "AstoriaCompany.com",
+       "1plus.net",
+       "Above.com",
+       "ActiveAudience.com",
+       "Bodis.com",
+       "DDC.com",
+       "DomainAdvertising.com",
+       "DomainApps.com",
+       "DomainSpa.com",
+       "DomainSponsor.com",
+       "Fabulous.com",
+       "ParkLogic.com",
+       "ParkQuick.com",
+       "ParkingCrew.com",
+       "RookMedia.net",
+       "Skenzo.com",
+       "SmartName",
+       "TheParkingPlace.com",
+       "TrafficZ.com",
+       "Voodoo.com",
+       "activeaudience.com",
+       "afternic",
+       "buydomains.com",
+       "cybersync.com",
+       "domainHop",
+       "domainSpa",
+       "domainSponsor",
+       "domaindirect.com",
+       "domainguru.com",
+       "domainhop.com",
+       "domaininformer.com",
+       "domainrightnow.com",
+       "domainsystems.com",
+       "dotzup.com",
+       "fabulous.com",
+       "futurequest.net",
+       "godaddy.com",
+       "goldkey.com",
+       "hostindex.com",
+       "hugedomains.com",
+       "iMonetize.com",
+       "namedrive.com",
+       "netvisibility.com",
+       "oversee.net",
+       "parked.com",
+       "parkednames.com",
+       "parking4income",
+       "parkingcrew.com",
+       "parkingdots",
+       "parkingdots.com",
+       "parkingsite",
+       "parkingsite.com",
+       "parkitnow",
+       "parkitnow.com",
+       "parkpage.com",
+       "parkquick",
+       "parkquick.com",
+       "premiumtraffic.com",
+       "revenuedirect",
+       "searchportalinformation.com",
+       "sedo.com",
+       "sedoparking.com",
+       "sedopro.com",
+       "siteparker.com",
+       "skenzo",
+       "skenzo.com",
+       "smartname.com",
+       "snapnames.com",
+       "streamic.com",
+       "tafficvalet.com",
+       "trafficclub.com",
+       "trafficparking.com",
+       "trafficz",
+       "uniregistry.com",
+       "webcom.com",
+       "whypark.com"
                     ]
 
     def __init__(self, url, schema=HTTP):
@@ -143,12 +164,18 @@ class ParkedDomain(WebDriver):
 
     def has_parking_service_resources(self) -> bool:
         resources = [self.find_list_resources("script", "src"),
-                     self.find_list_resources("img", "src")]
+                     self.find_list_resources("img", "src"),
+                     self.find_list_resources("iframe", "src")]
         clean = []
         for resource in resources:
             for each_item in resource:
                 clean.append(ParkedDomain.get_domain(each_item))
-        something = list(set(clean) & set(ParkedDomain.PARK_SERVICE))
+        remove_self = ParkedDomain.PARK_SERVICE
+        try:
+            remove_self.remove(self.url)
+        except ValueError:
+            pass
+        something = list(set(clean) & set(remove_self))
         return len(something) > 0
 
     def domain_has_random_subdomains(self) -> bool:
@@ -167,7 +194,10 @@ class ParkedDomain(WebDriver):
         return False
 
     def __get_dns(self):
-        result = ParkedDomain.resolver.query(self.url, "A")
+        try:
+            result = ParkedDomain.resolver.query(self.url, "A")
+        except:
+            return []
         return [rdata for rdata in result]
 
     def __has_dns(self):
@@ -176,10 +206,17 @@ class ParkedDomain(WebDriver):
     def __no_dns_record(self):
         return len(self.__get_dns()) == 0
 
+    def __has_who_is(self):
+        return whois.whois(url=self.url).status is not None
+
     def is_parked(self):
-        return self.has_parking_service_resources() or \
-               self.domain_has_random_subdomains() or \
-               self.__no_dns_record()
+        has_parking_service_resource = self.has_parking_service_resources()
+        domain_has_random_subdomains = self.domain_has_random_subdomains()
+        has_who_is = self.__has_who_is()
+        no_dns_record = self.__no_dns_record()
+        return has_parking_service_resource or \
+               domain_has_random_subdomains or \
+               (has_who_is and no_dns_record)
 
     @staticmethod
     def get_domain(url: str) -> str:
@@ -293,13 +330,18 @@ class Domain(WebDriver):
 
         return self.hsts
 
-    def has_open_port(self, port: int = 80) -> bool:
+    def has_open_port(self, port: int = 80, retry: int = 10) -> bool:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            result = sock.connect_ex((self.url, port))
-        except Exception as error:
-            print(error, file=sys.stderr)
-            return False
+        try_count = retry
+        result = None
+        while try_count > 0 and result is None:
+            try:
+                result = sock.connect_ex((self.url, port))
+            except Exception as error:
+                print("error opening %s on port %s with error: %s" % (self.url, port, error), file=sys.stderr)
+                try_count -= 1
+                time.sleep(1)
+
         # noinspection PyBroadException
         try:
             sock.close()
@@ -307,9 +349,12 @@ class Domain(WebDriver):
             # We don't care if we don't close it!
             pass
         del sock
-        if result == 0:
+        if result is None:
+            return False
+        elif result == 0:
             return True
-        return False
+        else:
+            return False
 
     @staticmethod
     def is_https_redirect(response: requests.Response = None) \
@@ -443,9 +488,14 @@ if __name__ == '__main__':
     # test_random_domains()
     # urls = input_to_list()
     csv_writer = output_to_csvwriter()
-    urls = Alexa().get_top()
-
+    urls = Alexa().get_top(top_n=1000)
+    #
     run(urls=urls, csv_writer=csv_writer)
     # q = queue.Queue()
     # d = Domain('apple.com')
     # d.run(queue=q)
+
+    # d = Domain(url='microsoft.com')
+    # q = Queue()
+    # d.run(a_queue=q)
+    # print(d.make_data())
