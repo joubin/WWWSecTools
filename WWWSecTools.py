@@ -15,7 +15,7 @@ from bs4 import BeautifulSoup
 from nassl._nassl import OpenSSLError
 from nassl.ssl_client import OpenSslVersionEnum
 from sslyze.utils.ssl_connection import SSLHandshakeRejected
-from multiprocessing import Process, Pool, Queue
+from multiprocessing import Queue
 import threading
 import whois
 
@@ -33,7 +33,7 @@ class Alexa:
     def get_top(top_n: int = 1000000) -> List[str]:
         file_name = "top1m.csv"
         ALEXA_DATA_URL = 'http://s3.amazonaws.com/alexa-static/top-1m.csv.zip'
-        import requests, zipfile, io
+        import zipfile, io
         r = WebDriver.request(url=ALEXA_DATA_URL)
         z = zipfile.ZipFile(io.BytesIO(r.content))
         folder = os.path.join(tempfile.gettempdir(), "csv")
@@ -415,8 +415,15 @@ class Domain(WebDriver):
         return clean_url
 
 
-def run(urls: List[str], csv_writer: CSVWriter) -> None:
+def run(urls: List[str], csv_writer: CSVWriter, active_threads : int = 4) -> None:
+
+    def __join_jobs(jobs : List[threading.Thread]) -> None:
+        for job in jobs:
+            print("Waiting on %s" % job.name, file=LOG)
+            job.join()
+
     jobs: List[threading.Thread] = []
+    thread_count = active_threads
     print_queue = Queue()
     for url in urls:
         print(url)
@@ -424,11 +431,14 @@ def run(urls: List[str], csv_writer: CSVWriter) -> None:
         job = threading.Thread(target=domain.run, args=(print_queue,), name=url)
         jobs.append(job)
         job.start()
+        thread_count -= 1
+        if thread_count == 0:
+            thread_count = active_threads
+            __join_jobs(jobs)
+
 
     print("Started everything")
-    for job in jobs:
-        print("Waiting on %s" % job.name, file=LOG)
-        job.join()
+    __join_jobs()
 
     print("Everythong joined, will start writing")
     while not print_queue.empty():
