@@ -1,71 +1,152 @@
 import csv
-import multiprocessing
-import queue
-import socket
-import sys
-import time
-from typing import Tuple, Any, List, Union
-from typing import List
-
-from bs4 import BeautifulSoup
-import requests
-import tldextract
 import random
+import socket
 import string
-import sched, time
-
+import sys
+import tempfile
+from typing import List
+from typing import Tuple, Any, Union
+import dns.resolver
+import os
+import requests
+import time
+import tldextract
+from bs4 import BeautifulSoup
 from nassl._nassl import OpenSSLError
 from nassl.ssl_client import OpenSslVersionEnum
 from sslyze.utils.ssl_connection import SSLHandshakeRejected
+from multiprocessing import Queue
+import threading
+import whois
 
 HTTP = "http://"
 HTTPS = "https://"
 LOG = sys.stdout
 
-ALL_FINISHED = False
 
-
-# import os
 # DEVNULL = open(os.devnull, 'w')
 # LOG = DEVNULL
+
+
+class Alexa:
+    @staticmethod
+    def get_top(top_n: int = 1000000) -> List[str]:
+        file_name = "top1m.csv"
+        ALEXA_DATA_URL = 'http://s3.amazonaws.com/alexa-static/top-1m.csv.zip'
+        import zipfile, io
+        r = WebDriver.request(url=ALEXA_DATA_URL)
+        z = zipfile.ZipFile(io.BytesIO(r.content))
+        folder = os.path.join(tempfile.gettempdir(), "csv")
+        z.extractall(path=folder)
+        file = os.path.join(folder, "top-1m.csv")
+        with open(file, 'r') as alexa:
+            alexa_csv = csv.reader(alexa, delimiter=',')
+            return [line[1] for line in alexa_csv][:top_n]
+
 
 class CSVWriter:
     def __init__(self, writer, header: List):
         self.writer = writer
-        self.queue = queue.Queue()
         self.write_row(header)
 
-
-    def close(self):
-        global ALL_FINISHED
-        ALL_FINISHED = True
-
     def write_row(self, row: List = None) -> None:
-        self.queue.put(row)
+        if row is not None:
+            if self.writer is not None:
+                self.writer.writerow(row)
+            else:
+                print(row, file=LOG)
 
-    def run(self):
-        global ALL_FINISHED
-        print("Running")
-        while not ALL_FINISHED:
-            print("waiting for something and is finished = %s " % ALL_FINISHED)
+class WebDriver:
+    WEB_DRIVER = requests.Session()
+    WEB_DRIVER.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_2) '
+                      'AppleWebKit/537.36 (KHTML, like Gecko) '
+                      'Chrome/63.0.3239.84 Safari/537.36'})
+    @staticmethod
+    def request(url : str = None, timeout:int = 60):
+        return WebDriver.WEB_DRIVER.get(url=url, timeout=timeout)
 
-            try:
-                row = self.queue.get(timeout=3)
+class ParkedDomain(WebDriver):
+    resolver = dns.resolver.Resolver()  # create a new instance named
 
-            except queue.Empty:
-                pass
-            finally:
-                if row is not None:
-                    if self.writer is not None:
-                        self.writer.writerow(row)
-                    else:
-                        print(row, file=LOG)
-        print("CSV Writer Done")
-
-
-class ParkedDomain:
-    PARK_SERVICE = ["smartname.com", "sedo.com", "parkingcrew.com",
-                    "uniregistry.com", "hugedomains.com"]
+    PARK_SERVICE = [
+       "AstoriaCompany.com",
+       "1plus.net",
+       "Above.com",
+       "ActiveAudience.com",
+       "Bodis.com",
+       "DDC.com",
+       "DomainAdvertising.com",
+       "DomainApps.com",
+       "DomainSpa.com",
+       "DomainSponsor.com",
+       "Fabulous.com",
+       "ParkLogic.com",
+       "ParkQuick.com",
+       "ParkingCrew.com",
+       "RookMedia.net",
+       "Skenzo.com",
+       "SmartName",
+       "TheParkingPlace.com",
+       "TrafficZ.com",
+       "Voodoo.com",
+       "activeaudience.com",
+       "afternic",
+       "buydomains.com",
+       "cybersync.com",
+       "domainHop",
+       "domainSpa",
+       "domainSponsor",
+       "domaindirect.com",
+       "domainguru.com",
+       "domainhop.com",
+       "domaininformer.com",
+       "domainrightnow.com",
+       "domainsystems.com",
+       "dotzup.com",
+       "fabulous.com",
+       "futurequest.net",
+       "godaddy.com",
+       "goldkey.com",
+       "hostindex.com",
+       "hugedomains.com",
+       "iMonetize.com",
+       "namedrive.com",
+       "netvisibility.com",
+       "oversee.net",
+       "parked.com",
+       "parkednames.com",
+       "parking4income",
+       "parkingcrew.com",
+       "parkingdots",
+       "parkingdots.com",
+       "parkingsite",
+       "parkingsite.com",
+       "parkitnow",
+       "parkitnow.com",
+       "parkpage.com",
+       "parkquick",
+       "parkquick.com",
+       "premiumtraffic.com",
+       "revenuedirect",
+       "searchportalinformation.com",
+       "sedo.com",
+       "sedoparking.com",
+       "sedopro.com",
+       "siteparker.com",
+       "skenzo",
+       "skenzo.com",
+       "smartname.com",
+       "snapnames.com",
+       "streamic.com",
+       "tafficvalet.com",
+       "trafficclub.com",
+       "trafficparking.com",
+       "trafficz",
+       "uniregistry.com",
+       "webcom.com",
+       "whypark.com"
+                    ]
 
     def __init__(self, url, schema=HTTP):
         self.url = url
@@ -74,21 +155,27 @@ class ParkedDomain:
 
     def __get_page(self):
         try:
-            response = requests.get(url=self.schema + self.url,
-                                    headers=Domain.HEADERS)
+            response = self.request(url=self.schema + self.url)
             content = response.content
             return BeautifulSoup(content, 'html.parser')
-        except (requests.exceptions.ConnectionError):
+        except (
+        requests.exceptions.ConnectionError, requests.exceptions.Timeout):
             return None
 
     def has_parking_service_resources(self) -> bool:
         resources = [self.find_list_resources("script", "src"),
-                     self.find_list_resources("img", "src")]
+                     self.find_list_resources("img", "src"),
+                     self.find_list_resources("iframe", "src")]
         clean = []
         for resource in resources:
             for each_item in resource:
                 clean.append(ParkedDomain.get_domain(each_item))
-        something = list(set(clean) & set(ParkedDomain.PARK_SERVICE))
+        remove_self = ParkedDomain.PARK_SERVICE
+        try:
+            remove_self.remove(self.url)
+        except ValueError:
+            pass
+        something = list(set(clean) & set(remove_self))
         return len(something) > 0
 
     def domain_has_random_subdomains(self) -> bool:
@@ -98,7 +185,7 @@ class ParkedDomain:
         url = HTTP + subdomain + '.' + self.url
 
         try:
-            response = requests.get(url=url, headers=Domain.HEADERS, )
+            response = self.request(url=url)
         except requests.exceptions.ConnectionError:
             return False
         if 'Location' in response.headers:
@@ -106,9 +193,30 @@ class ParkedDomain:
                 return True
         return False
 
+    def __get_dns(self):
+        try:
+            result = ParkedDomain.resolver.query(self.url, "A")
+        except:
+            return []
+        return [rdata for rdata in result]
+
+    def __has_dns(self):
+        return len(self.__get_dns()) > 0
+
+    def __no_dns_record(self):
+        return len(self.__get_dns()) == 0
+
+    def __has_who_is(self):
+        return whois.whois(url=self.url).status is not None
+
     def is_parked(self):
-        return self.has_parking_service_resources() or \
-               self.domain_has_random_subdomains()
+        has_parking_service_resource = self.has_parking_service_resources()
+        domain_has_random_subdomains = self.domain_has_random_subdomains()
+        has_who_is = self.__has_who_is()
+        no_dns_record = self.__no_dns_record()
+        return has_parking_service_resource or \
+               domain_has_random_subdomains or \
+               (has_who_is and no_dns_record)
 
     @staticmethod
     def get_domain(url: str) -> str:
@@ -128,17 +236,13 @@ class ParkedDomain:
         return list
 
 
-class Domain:
+class Domain(WebDriver):
     csv_format = ['URL', 'HTTP', 'HTTPS', 'Parked', 'HSTS', 'HTTPS Redirect',
                   'SSLV23',
                   'SSLV2', 'SSLV3', 'TLSV1', 'TLSV1_1', 'TLSV1_2', 'TLSV1_3']
 
-    HEADERS = {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_2) '
-                      'AppleWebKit/537.36 (KHTML, like Gecko) '
-                      'Chrome/63.0.3239.84 Safari/537.36'}
 
-    def __init__(self, url: str, csv_writer: CSVWriter):
+    def __init__(self, url: str, csv_writer: CSVWriter = None):
         self.url: str = Domain.remove_schema(url)
         self.has_http: bool = False
         self.http_response: requests.Response = None
@@ -154,7 +258,7 @@ class Domain:
 
         self.csv_writer = csv_writer
 
-    def run(self):
+    def run(self, a_queue: Queue):
         # is port 80 open?
         print("\tTesting %s ---> Port 80" % (self.url,), file=LOG)
         port80 = self.has_open_port(port=80)
@@ -184,8 +288,13 @@ class Domain:
             # check ssl versions
             # check tls version
             # check other tls stuff
-        self.write_to_csv()
-        print("Finished: %s" % self.url, file=LOG)
+        try:
+            print("Put data on the queue", file=LOG)
+            a_queue.put(self.make_data())
+        except:
+            print("Couldnt put data on the queue", file=sys.stderr)
+
+        print("%s" % self.make_data(), file=LOG)
 
     def is_domain_parked(self, schema=HTTP) -> bool:
         pd = ParkedDomain(url=self.url, schema=schema)
@@ -208,9 +317,9 @@ class Domain:
         Connect to target site and check its headers."
         """
         try:
-            self.https_response = requests.get(HTTPS + self.url,
-                                               headers=Domain.HEADERS)
-        except requests.exceptions.SSLError as error:
+            self.https_response = self.request(HTTPS + self.url)
+        except (requests.exceptions.ConnectionError,
+                requests.exceptions.SSLError) as error:
             print("An error for %s when checking HSTS. \nError: %s" % (
                 self.url, error,),
                   file=sys.stderr)
@@ -221,12 +330,18 @@ class Domain:
 
         return self.hsts
 
-    def has_open_port(self, port: int = 80) -> bool:
+    def has_open_port(self, port: int = 80, retry: int = 10) -> bool:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            result = sock.connect_ex((self.url, port))
-        except socket.gaierror:
-            return False
+        try_count = retry
+        result = None
+        while try_count > 0 and result is None:
+            try:
+                result = sock.connect_ex((self.url, port))
+            except Exception as error:
+                print("error opening %s on port %s with error: %s" % (self.url, port, error), file=sys.stderr)
+                try_count -= 1
+                time.sleep(1)
+
         # noinspection PyBroadException
         try:
             sock.close()
@@ -234,9 +349,12 @@ class Domain:
             # We don't care if we don't close it!
             pass
         del sock
-        if result == 0:
+        if result is None:
+            return False
+        elif result == 0:
             return True
-        return False
+        else:
+            return False
 
     @staticmethod
     def is_https_redirect(response: requests.Response = None) \
@@ -252,7 +370,7 @@ class Domain:
         try:
             locationHTTPS = str(response.headers['Location']).startswith(
                 "https://")
-        except KeyError:
+        except (AttributeError, KeyError):
             locationHTTPS = False
         code301 = response.status_code == 301
         return code301 == locationHTTPS
@@ -263,8 +381,7 @@ class Domain:
         :return: Tuple. Index 0 is the http and Index 1 is https
         """
         try:
-            httpResponse = requests.get(schema + self.url, timeout=timeout,
-                                        headers=Domain.HEADERS)
+            httpResponse = self.request(schema + self.url)
         except (
                 requests.exceptions.ConnectionError,
                 requests.exceptions.ReadTimeout):
@@ -272,21 +389,20 @@ class Domain:
 
         return True, httpResponse
 
+    def make_data(self) -> List[Union[str, bool]]:
+        columns = [self.url, self.has_http, self.has_https, self.is_parked,
+                   self.hsts,
+                   self.https_redirect]
+        for i in OpenSslVersionEnum:
+            columns.append(self.ssl_version_support[i])
+
+        return columns
+
     def write_to_csv(self):
         """
         :return: Nothing, purly operational task
         """
-
-        def __make_data() -> List[Union[str, bool]]:
-            columns = [self.url, self.has_http, self.has_https, self.is_parked,
-                       self.hsts,
-                       self.https_redirect]
-            for i in OpenSslVersionEnum:
-                columns.append(self.ssl_version_support[i])
-
-            return columns
-
-        data = __make_data()
+        data = self.make_data()
         self.csv_writer.write_row(data)
 
     @staticmethod
@@ -299,7 +415,39 @@ class Domain:
         return clean_url
 
 
-def run():
+def run(urls: List[str], csv_writer: CSVWriter, active_threads : int = 4) -> None:
+
+    def __join_jobs(jobs : List[threading.Thread]) -> None:
+        for job in jobs:
+            print("Waiting on %s" % job.name, file=LOG)
+            job.join()
+
+    jobs: List[threading.Thread] = []
+    thread_count = active_threads
+    print_queue = Queue()
+    for url in urls:
+        print(url)
+        domain = Domain(url=url)
+        job = threading.Thread(target=domain.run, args=(print_queue,), name=url)
+        jobs.append(job)
+        job.start()
+        thread_count -= 1
+        if thread_count == 0:
+            thread_count = active_threads
+            __join_jobs(jobs)
+
+
+    print("Started everything")
+    __join_jobs()
+
+    print("Everythong joined, will start writing")
+    while not print_queue.empty():
+        item = print_queue.get()
+        print(item)
+        csv_writer.write_row(item)
+
+
+def input_to_list() -> List[str]:
     try:
         inputFile = str(sys.argv[1])
     except IndexError:
@@ -308,6 +456,12 @@ def run():
               flush=True)
         sys.exit(31)
 
+    with open(inputFile, "r") as in_file:
+        urls: List[str] = [line for line in in_file]
+        return urls
+
+
+def output_to_csvwriter() -> CSVWriter:
     try:
         outputFile = str(sys.argv[2])
     except IndexError:
@@ -315,53 +469,17 @@ def run():
               sys.argv[0] + " inputFile.txt outputFile.csv", file=sys.stderr,
               flush=True)
         sys.exit(31)
-    jobs: List[multiprocessing.Process] = []
-    domains: List[Domain] = []
-    csv_writer_process = None
-    csv_writer = None
-    start = time.time()
-
-    with open(inputFile, "r") as in_file:
-        with open(outputFile, 'w') as out_file:
-            csv_writer = CSVWriter(
-                writer=csv.writer(out_file, delimiter=','),
-                header=Domain.csv_format)
-            csv_writer_process = multiprocessing.Process(target=csv_writer.run,
-                                                         name="writer")
-            csv_writer_process.start()
-            for line in in_file:
-                url = line
-                domain = Domain(url=url, csv_writer=csv_writer)
-                domains.append(domain)
-                job = multiprocessing.Process(target=domain.run, name=url)
-                jobs.append(job)
-                job.start()
-
-    for job in jobs:
-        print("waiting on %s" % job.name)
-        job.join()
-    print("All done")
-    csv_writer.close()
-    csv_writer_process.join()
-    end = time.time()
-    print("took %s seconds to run" % (end - start,))
-
-
-def test():
-    # site = "jabbari.io"
-    # # noinspection PyTypeChecker
-    # d = Domain(url=site, csv_writer=CSVWriter(writer=None, header=None))
-    # print(Domain.csv_format)
-    # d.run()
-    from ParkDetection import ParkedDomain as PD
-    p = PD()
+    out_file = open(outputFile, 'w')
+    csv_writer = CSVWriter(
+        writer=csv.writer(out_file, delimiter=','),
+        header=Domain.csv_format)
+    return csv_writer
 
 
 def test_random_domains():
     from itertools import product
     from string import ascii_lowercase
     keywords = [''.join(i) for i in product(ascii_lowercase, repeat=5)]
-    jobs: List[multiprocessing.Process] = []
     with open('output.csv', 'w') as out_file:
         csv_writer = CSVWriter(
             writer=csv.writer(None, delimiter=','),
@@ -371,14 +489,23 @@ def test_random_domains():
                 url = domain + schema
                 print(url)
                 park = Domain(url=url, csv_writer=csv_writer)
-                process = multiprocessing.Process(target=park.run)
-                jobs.append(process)
-                process.start()
-        for i in jobs:
-            i.join()
+                park.run()
 
 
 if __name__ == '__main__':
-    run()
+    # run()
     # test()
     # test_random_domains()
+    # urls = input_to_list()
+    csv_writer = output_to_csvwriter()
+    urls = Alexa().get_top(top_n=1000)
+    #
+    run(urls=urls, csv_writer=csv_writer)
+    # q = queue.Queue()
+    # d = Domain('apple.com')
+    # d.run(queue=q)
+
+    # d = Domain(url='microsoft.com')
+    # q = Queue()
+    # d.run(a_queue=q)
+    # print(d.make_data())
