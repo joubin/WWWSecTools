@@ -513,5 +513,5 @@ if __name__ == '__main__':
     # test_random_domains()
     # urls = input_to_list()
     csv_writer = output_to_csvwriter()
-    urls = Alexa().get_top(top_n=1000)
+    urls = Alexa().get_top(top_n=10000)
     run(urls=urls, csv_writer=csv_writer)
