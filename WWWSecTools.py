@@ -515,11 +515,3 @@ if __name__ == '__main__':
     csv_writer = output_to_csvwriter()
     urls = Alexa().get_top(top_n=1000)
     run(urls=urls, csv_writer=csv_writer)
-    # q = queue.Queue()
-    # d = Domain('apple.com')
-    # d.run(queue=q)
-
-    # d = Domain(url='microsoft.com')
-    # q = Queue()
-    # d.run(a_queue=q)
-    # print(d.make_data())
