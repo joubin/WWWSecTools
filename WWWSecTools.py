@@ -11,7 +11,7 @@ import os
 import requests
 import time
 import tldextract
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Comment
 from nassl._nassl import OpenSSLError
 from nassl.ssl_client import OpenSslVersionEnum
 from sslyze.utils.ssl_connection import SSLHandshakeRejected
@@ -56,97 +56,101 @@ class CSVWriter:
             else:
                 print(row, file=LOG)
 
+
 class WebDriver:
     WEB_DRIVER = requests.Session()
     WEB_DRIVER.headers.update({
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_2) '
                       'AppleWebKit/537.36 (KHTML, like Gecko) '
                       'Chrome/63.0.3239.84 Safari/537.36'})
+
     @staticmethod
-    def request(url : str = None, timeout:int = 60):
+    def request(url: str = None, timeout: int = 60):
         return WebDriver.WEB_DRIVER.get(url=url, timeout=timeout)
+
 
 class ParkedDomain(WebDriver):
     resolver = dns.resolver.Resolver()  # create a new instance named
 
     PARK_SERVICE = [
-       "AstoriaCompany.com",
-       "1plus.net",
-       "Above.com",
-       "ActiveAudience.com",
-       "Bodis.com",
-       "DDC.com",
-       "DomainAdvertising.com",
-       "DomainApps.com",
-       "DomainSpa.com",
-       "DomainSponsor.com",
-       "Fabulous.com",
-       "ParkLogic.com",
-       "ParkQuick.com",
-       "ParkingCrew.com",
-       "RookMedia.net",
-       "Skenzo.com",
-       "SmartName",
-       "TheParkingPlace.com",
-       "TrafficZ.com",
-       "Voodoo.com",
-       "activeaudience.com",
-       "afternic",
-       "buydomains.com",
-       "cybersync.com",
-       "domainHop",
-       "domainSpa",
-       "domainSponsor",
-       "domaindirect.com",
-       "domainguru.com",
-       "domainhop.com",
-       "domaininformer.com",
-       "domainrightnow.com",
-       "domainsystems.com",
-       "dotzup.com",
-       "fabulous.com",
-       "futurequest.net",
-       "godaddy.com",
-       "goldkey.com",
-       "hostindex.com",
-       "hugedomains.com",
-       "iMonetize.com",
-       "namedrive.com",
-       "netvisibility.com",
-       "oversee.net",
-       "parked.com",
-       "parkednames.com",
-       "parking4income",
-       "parkingcrew.com",
-       "parkingdots",
-       "parkingdots.com",
-       "parkingsite",
-       "parkingsite.com",
-       "parkitnow",
-       "parkitnow.com",
-       "parkpage.com",
-       "parkquick",
-       "parkquick.com",
-       "premiumtraffic.com",
-       "revenuedirect",
-       "searchportalinformation.com",
-       "sedo.com",
-       "sedoparking.com",
-       "sedopro.com",
-       "siteparker.com",
-       "skenzo",
-       "skenzo.com",
-       "smartname.com",
-       "snapnames.com",
-       "streamic.com",
-       "tafficvalet.com",
-       "trafficclub.com",
-       "trafficparking.com",
-       "trafficz",
-       "uniregistry.com",
-       "webcom.com",
-       "whypark.com"
-                    ]
+        "AstoriaCompany.com",
+        "1plus.net",
+        "Above.com",
+        "ActiveAudience.com",
+        "Bodis.com",
+        "DDC.com",
+        "DomainAdvertising.com",
+        "DomainApps.com",
+        "DomainSpa.com",
+        "DomainSponsor.com",
+        "Fabulous.com",
+        "ParkLogic.com",
+        "ParkQuick.com",
+        "ParkingCrew.com",
+        "RookMedia.net",
+        "Skenzo.com",
+        "SmartName",
+        "TheParkingPlace.com",
+        "TrafficZ.com",
+        "Voodoo.com",
+        "activeaudience.com",
+        "afternic",
+        "buydomains.com",
+        "cybersync.com",
+        "domainHop",
+        "domainSpa",
+        "mcc.godaddy.com/park",
+        "domainSponsor",
+        "domaindirect.com",
+        "domainguru.com",
+        "domainhop.com",
+        "domaininformer.com",
+        "domainrightnow.com",
+        "domainsystems.com",
+        "dotzup.com",
+        "fabulous.com",
+        "futurequest.net",
+        "godaddy.com",
+        "goldkey.com",
+        "hostindex.com",
+        "hugedomains.com",
+        "iMonetize.com",
+        "namedrive.com",
+        "netvisibility.com",
+        "oversee.net",
+        "parked.com",
+        "parkednames.com",
+        "parking4income",
+        "parkingcrew.com",
+        "parkingdots",
+        "parkingdots.com",
+        "parkingsite",
+        "parkingsite.com",
+        "parkitnow",
+        "parkitnow.com",
+        "parkpage.com",
+        "parkquick",
+        "parkquick.com",
+        "premiumtraffic.com",
+        "revenuedirect",
+        "searchportalinformation.com",
+        "sedo.com",
+        "sedoparking.com",
+        "sedopro.com",
+        "siteparker.com",
+        "skenzo",
+        "skenzo.com",
+        "smartname.com",
+        "snapnames.com",
+        "streamic.com",
+        "tafficvalet.com",
+        "trafficclub.com",
+        "trafficparking.com",
+        "trafficz",
+        "uniregistry.com",
+        "webcom.com",
+        "whypark.com"
+    ]
 
     def __init__(self, url, schema=HTTP):
         self.url = url
@@ -159,13 +163,16 @@ class ParkedDomain(WebDriver):
             content = response.content
             return BeautifulSoup(content, 'html.parser')
         except (
-        requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+                requests.exceptions.ConnectionError,
+                requests.exceptions.Timeout):
             return None
 
     def has_parking_service_resources(self) -> bool:
         resources = [self.find_list_resources("script", "src"),
                      self.find_list_resources("img", "src"),
-                     self.find_list_resources("iframe", "src")]
+                     self.find_list_resources("iframe", "src"),
+                     self.get_comments()]
+        print("A", resources)
         clean = []
         for resource in resources:
             for each_item in resource:
@@ -175,7 +182,10 @@ class ParkedDomain(WebDriver):
             remove_self.remove(self.url)
         except ValueError:
             pass
+        print("B", clean)
+        print("C", remove_self)
         something = list(set(clean) & set(remove_self))
+        print("D", something)
         return len(something) > 0
 
     def domain_has_random_subdomains(self) -> bool:
@@ -223,24 +233,29 @@ class ParkedDomain(WebDriver):
         extracted = tldextract.extract(url)
         return "{}.{}".format(extracted.domain, extracted.suffix)
 
+    def get_comments(self) -> List:
+        if self.soup is None:
+            return []
+        return self.soup.findAll(text=lambda text: isinstance(text, Comment))
+
+
     def find_list_resources(self, tag, attribute) -> List:
         list = []
         if self.soup is None:
-            return []
-
-        for x in self.soup.findAll(tag):
-            try:
-                list.append(x[attribute])
-            except KeyError:
-                pass
-        return list
+            return list
+        else:
+            for x in self.soup.findAll(tag):
+                try:
+                    list.append(x[attribute])
+                except KeyError:
+                    pass
+            return list
 
 
 class Domain(WebDriver):
     csv_format = ['URL', 'HTTP', 'HTTPS', 'Parked', 'HSTS', 'HTTPS Redirect',
                   'SSLV23',
                   'SSLV2', 'SSLV3', 'TLSV1', 'TLSV1_1', 'TLSV1_2', 'TLSV1_3']
-
 
     def __init__(self, url: str, csv_writer: CSVWriter = None):
         self.url: str = Domain.remove_schema(url)
@@ -338,7 +353,8 @@ class Domain(WebDriver):
             try:
                 result = sock.connect_ex((self.url, port))
             except Exception as error:
-                print("error opening %s on port %s with error: %s" % (self.url, port, error), file=sys.stderr)
+                print("error opening %s on port %s with error: %s" % (
+                self.url, port, error), file=sys.stderr)
                 try_count -= 1
                 time.sleep(1)
 
@@ -415,9 +431,9 @@ class Domain(WebDriver):
         return clean_url
 
 
-def run(urls: List[str], csv_writer: CSVWriter, active_threads : int = 4) -> None:
-
-    def __join_jobs(jobs : List[threading.Thread]) -> None:
+def run(urls: List[str], csv_writer: CSVWriter,
+        active_threads: int = 4) -> None:
+    def __join_jobs(jobs: List[threading.Thread]) -> None:
         for job in jobs:
             print("Waiting on %s" % job.name, file=LOG)
             job.join()
@@ -435,7 +451,6 @@ def run(urls: List[str], csv_writer: CSVWriter, active_threads : int = 4) -> Non
         if thread_count == 0:
             thread_count = active_threads
             __join_jobs(jobs)
-
 
     print("Started everything")
     __join_jobs()
