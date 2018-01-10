@@ -29,10 +29,10 @@ __status__ = "Development"
 
 HTTP = "http://"
 HTTPS = "https://"
-LOG = sys.stdout
+# LOG = sys.stdout
 
-# DEVNULL = open(os.devnull, 'w')
-# LOG = DEVNULL
+DEVNULL = open(os.devnull, 'w')
+LOG = DEVNULL
 
 
 class Alexa:
@@ -86,6 +86,7 @@ class ParkedDomain(WebDriver):
         "ActiveAudience.com",
         "Bodis.com",
         "DDC.com",
+        "dnsexit.com",
         "DomainAdvertising.com",
         "DomainApps.com",
         "DomainSpa.com",
@@ -178,8 +179,9 @@ class ParkedDomain(WebDriver):
         resources = [self.find_list_resources("script", "src"),
                      self.find_list_resources("img", "src"),
                      self.find_list_resources("iframe", "src"),
+                     self.find_list_resources("base", "href"),
                      self.get_comments()]
-        print("A", resources)
+
         clean = []
         for resource in resources:
             for each_item in resource:
@@ -189,10 +191,8 @@ class ParkedDomain(WebDriver):
             remove_self.remove(self.url)
         except ValueError:
             pass
-        print("B", clean)
-        print("C", remove_self)
+
         something = list(set(clean) & set(remove_self))
-        print("D", something)
         return len(something) > 0
 
     def domain_has_random_subdomains(self) -> bool:
@@ -215,7 +215,7 @@ class ParkedDomain(WebDriver):
             result = ParkedDomain.resolver.query(self.url, "A")
         except (dns.resolver.NXDOMAIN, dns.resolver.YXDOMAIN, dns.resolver.NoAnswer):
             return []
-        
+
         return [rdata for rdata in result]
 
     def __has_dns(self):
@@ -281,7 +281,7 @@ class Domain(WebDriver):
 
         self.csv_writer = csv_writer
 
-    def run(self, a_queue: Queue):
+    def run(self, a_queue: Queue = None):
         # is port 80 open?
         print("\tTesting %s ---> Port 80" % (self.url,), file=LOG)
         port80 = self.has_open_port(port=80)
