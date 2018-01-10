@@ -19,10 +19,17 @@ from multiprocessing import Queue
 import threading
 import whois
 
+__author__ = "Joubin Jabbari"
+__copyright__ = "Copyright 2018, jabbari.io"
+__license__ = "MIT"
+__version__ = "0.0.1"
+__maintainer__ = "Joubin Jabbari"
+__email__ = "joubin.j@gmail.com"
+__status__ = "Development"
+
 HTTP = "http://"
 HTTPS = "https://"
 LOG = sys.stdout
-
 
 # DEVNULL = open(os.devnull, 'w')
 # LOG = DEVNULL
@@ -206,8 +213,9 @@ class ParkedDomain(WebDriver):
     def __get_dns(self):
         try:
             result = ParkedDomain.resolver.query(self.url, "A")
-        except:
+        except (dns.resolver.NXDOMAIN, dns.resolver.YXDOMAIN, dns.resolver.NoAnswer):
             return []
+        
         return [rdata for rdata in result]
 
     def __has_dns(self):
