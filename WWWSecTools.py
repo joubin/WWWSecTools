@@ -73,7 +73,8 @@ class WebDriver:
 
     @staticmethod
     def request(url: str = None, timeout: int = 60):
-        return WebDriver.WEB_DRIVER.get(url=url, timeout=timeout)
+        cookies = {}
+        return WebDriver.WEB_DRIVER.get(url=url, timeout=timeout, cookies=cookies)
 
 
 class ParkedDomain(WebDriver):
@@ -177,6 +178,7 @@ class ParkedDomain(WebDriver):
 
     def has_parking_service_resources(self) -> bool:
         resources = [self.find_list_resources("script", "src"),
+                     self.find_list_resources("link", "href"),
                      self.find_list_resources("img", "src"),
                      self.find_list_resources("iframe", "src"),
                      self.find_list_resources("base", "href"),
